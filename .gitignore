@@ -3,39 +3,106 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
 
-# Environment variables
+# Environment variables and sensitive configuration
 .env
+.env.*
+!.env.example
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+config.json
+config.js
+secrets.json
+credentials.json
 
-# Database files
+# Discord bot tokens and sensitive data
+token.txt
+bot-token*
+discord-token*
+client-secret*
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+
+# Database files and data
 data/
+database/
+db/
 *.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-shm
+*.db-wal
 
-# Logs
+# Logs and monitoring
 logs/
 *.log
+log/
+*.log.*
+pids/
+*.pid
+*.seed
+*.pid.lock
 
-# Backups
+# Backups and archives
 backups/
+backup/
+*.backup
+*.bak
+*.tar.gz
+*.zip
+*.rar
 
 # Documentation (generated)
 docs/
+out/
+doc/
+api-docs/
 
-# Templates (user-generated)
+# Templates and user data (potentially sensitive)
 templates/
+user-templates/
+server-exports/
+*.template
 
-# IDE
+# Build outputs and caches
+dist/
+build/
+lib-cov/
+.nyc_output/
+.grunt/
+.lock-wscript
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+.vuepress/dist/
+
+# IDE and editor files
 .vscode/
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo
 *~
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+*.sublime-project
 
-# OS
+# OS generated files
 .DS_Store
 .DS_Store?
 ._*
@@ -43,10 +110,61 @@ templates/
 .Trashes
 ehthumbs.db
 Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
 
-# Test coverage
+# Test coverage and reports
 coverage/
+*.lcov
+.nyc_output/
+junit.xml
+test-results/
 
-# Temporary files
+# Temporary files and runtime
 tmp/
 temp/
+.tmp/
+.temp/
+*.tmp
+*.temp
+.cache/
+.eslintcache
+.stylelintcache
+
+# Package manager specific
+.yarn/
+.yarnrc.yml
+.pnp.*
+shrinkwrap.json
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Runtime and process files
+.pm2/
+ecosystem.config.js
+*.pid
+*.seed
+*.pid.lock
+.pm2-dev/
+
+# Security and audit files
+.audit/
+security-scan-results.*
+vulnerability-report.*
+
+# Webhook endpoints and API configs (potentially sensitive)
+webhooks.json
+api-keys.json
+endpoints.json
+
+# Discord application files (potentially sensitive)
+application.json
+bot-config.json
+server-configs/
+
+# Local development overrides
+local.*
+*.local
+override.*
+custom.*
