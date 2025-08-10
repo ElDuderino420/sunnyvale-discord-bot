@@ -1,0 +1,27 @@
+{
+  "source": {
+    "include": ["src/", "README.md"],
+    "includePattern": "\\.(js|md)$",
+    "exclude": ["node_modules/", "data/", "logs/", "backups/", "templates/"]
+  },
+  "opts": {
+    "destination": "./docs/",
+    "recurse": true,
+    "readme": "./README.md"
+  },
+  "plugins": [
+    "plugins/markdown"
+  ],
+  "templates": {
+    "cleverLinks": false,
+    "monospaceLinks": false
+  },
+  "tags": {
+    "allowUnknownTags": true,
+    "dictionaries": ["jsdoc", "closure"]
+  },
+  "metadata": {
+    "title": "Sunnyvale Discord Bot Documentation",
+    "version": "1.0.0"
+  }
+}
