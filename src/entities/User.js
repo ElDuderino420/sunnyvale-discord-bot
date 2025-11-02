@@ -63,6 +63,17 @@ class User {
     this._moderationHistory = data.moderationHistory || [];
     
     /**
+     * Staff-only notes for this user
+     * @type {Array<StaffNote>}
+     * @private
+     */
+    this._staffNotes = Array.isArray(data.staffNotes)
+      ? data.staffNotes
+        .map(note => this._normalizeExistingStaffNote(note))
+        .filter(note => note !== null)
+      : [];
+    
+    /**
      * When user record was created
      * @type {Date}
      * @readonly
@@ -120,6 +131,128 @@ class User {
     this.updatedAt = new Date();
 
     return moderationAction;
+  }
+
+  /**
+   * Convenience helper to add a warn moderation action
+   * @param {string} moderatorId - ID of moderator performing the warn
+   * @param {string} reason - Reason for the warning
+   * @param {Date} [timestamp=new Date()] - When the warning occurred
+   * @param {Object} [metadata={}] - Additional metadata for the warning
+   * @returns {ModerationAction} Created moderation action
+   */
+  addWarning(moderatorId, reason, timestamp = new Date(), metadata = {}) {
+    return this.addModerationAction('warn', moderatorId, reason, timestamp, metadata);
+  }
+
+  /**
+   * Get warnings for the user
+   * @param {number|null} [limit=null] - Limit number of warnings returned
+   * @returns {Array<ModerationAction>} Warning history (most recent first)
+   */
+  getWarnings(limit = null) {
+    return this.getModerationHistory('warn', limit);
+  }
+
+  /**
+   * Add staff-only note for this user
+   * @param {string} moderatorId - Moderator ID adding the note
+   * @param {string} content - Note content
+   * @param {Date} [timestamp=new Date()] - When the note was created
+   * @param {Object} [metadata={}] - Optional metadata for the note
+   * @returns {StaffNote} Created staff note
+   */
+  addStaffNote(moderatorId, content, timestamp = new Date(), metadata = {}) {
+    if (!moderatorId || typeof moderatorId !== 'string') {
+      throw new Error('Moderator ID must be a non-empty string');
+    }
+
+    if (!content || typeof content !== 'string') {
+      throw new Error('Note content must be a non-empty string');
+    }
+
+    const trimmedContent = content.trim();
+    if (trimmedContent.length === 0) {
+      throw new Error('Note content must be a non-empty string');
+    }
+
+    if (trimmedContent.length > 2000) {
+      throw new Error('Note content cannot exceed 2000 characters');
+    }
+
+    const timestampValue = timestamp instanceof Date ? timestamp : new Date(timestamp);
+    if (Number.isNaN(timestampValue.getTime())) {
+      throw new Error('Invalid timestamp provided for staff note');
+    }
+
+    const sanitizedMetadata = metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+      ? { ...metadata }
+      : {};
+
+    const noteEntry = {
+      id: this._generateStaffNoteId(),
+      moderator: moderatorId.trim(),
+      content: trimmedContent,
+      timestamp: timestampValue,
+      metadata: sanitizedMetadata
+    };
+
+    this._staffNotes.push(noteEntry);
+    this.updatedAt = new Date();
+
+    return this._cloneStaffNote(noteEntry);
+  }
+
+  /**
+   * Get staff notes for this user
+   * @param {number|null} [limit=null] - Limit number of notes returned
+   * @returns {Array<StaffNote>} Staff notes sorted by newest first
+   */
+  getStaffNotes(limit = null) {
+    let notes = [...this._staffNotes];
+
+    notes.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    if (Number.isInteger(limit) && limit > 0) {
+      notes = notes.slice(0, limit);
+    }
+
+    return notes.map(note => this._cloneStaffNote(note));
+  }
+
+  /**
+   * Find a specific staff note by ID
+   * @param {string} noteId - Staff note identifier
+   * @returns {StaffNote|null} Staff note if found, otherwise null
+   */
+  getStaffNote(noteId) {
+    if (!noteId || typeof noteId !== 'string') {
+      return null;
+    }
+
+    const note = this._staffNotes.find(entry => entry.id === noteId);
+    return note ? this._cloneStaffNote(note) : null;
+  }
+
+  /**
+   * Remove a staff note by ID
+   * @param {string} noteId - Staff note identifier
+   * @returns {boolean} Whether a note was removed
+   */
+  removeStaffNote(noteId) {
+    if (!noteId || typeof noteId !== 'string') {
+      return false;
+    }
+
+    const index = this._staffNotes.findIndex(entry => entry.id === noteId);
+    if (index === -1) {
+      return false;
+    }
+
+    this._staffNotes.splice(index, 1);
+    this.updatedAt = new Date();
+
+    return true;
   }
 
   /**
@@ -319,6 +452,15 @@ class User {
       originalRoles: this._originalRoles,
       persistentRoles: this._persistentRoles,
       moderationHistory: this._moderationHistory,
+      staffNotes: this._staffNotes.map(note => ({
+        id: note.id,
+        moderator: note.moderator,
+        content: note.content,
+        timestamp: note.timestamp instanceof Date ? new Date(note.timestamp.getTime()) : new Date(note.timestamp),
+        metadata: note.metadata && typeof note.metadata === 'object' && !Array.isArray(note.metadata)
+          ? { ...note.metadata }
+          : {}
+      })),
       createdAt: this.createdAt,
       updatedAt: this.updatedAt
     };
@@ -343,6 +485,7 @@ class User {
       originalRoles: data.originalRoles,
       persistentRoles: data.persistentRoles,
       moderationHistory: data.moderationHistory,
+      staffNotes: data.staffNotes,
       createdAt: data.createdAt,
       updatedAt: data.updatedAt
     });
@@ -355,6 +498,73 @@ class User {
    */
   _generateActionId() {
     return `${this.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Generate unique ID for staff notes
+   * @private
+   * @returns {string} Unique staff note identifier
+   */
+  _generateStaffNoteId() {
+    return `${this.id}-note-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  /**
+   * Normalize staff note loaded from persistence
+   * @private
+   * @param {Object} note - Raw staff note data
+   * @returns {StaffNote|null} Normalized staff note or null if invalid
+   */
+  _normalizeExistingStaffNote(note) {
+    if (!note || typeof note !== 'object') {
+      return null;
+    }
+
+    const moderator = typeof note.moderator === 'string' ? note.moderator.trim() : '';
+    const content = typeof note.content === 'string' ? note.content.trim() : '';
+
+    if (!moderator || !content) {
+      return null;
+    }
+
+    const timestamp = note.timestamp instanceof Date ? note.timestamp : new Date(note.timestamp);
+    if (Number.isNaN(timestamp.getTime())) {
+      return null;
+    }
+
+    const metadata = note.metadata && typeof note.metadata === 'object' && !Array.isArray(note.metadata)
+      ? { ...note.metadata }
+      : {};
+
+    const id = typeof note.id === 'string' && note.id.trim().length > 0
+      ? note.id.trim()
+      : this._generateStaffNoteId();
+
+    return {
+      id,
+      moderator,
+      content,
+      timestamp,
+      metadata
+    };
+  }
+
+  /**
+   * Clone staff note entry to prevent external mutation
+   * @private
+   * @param {StaffNote} note - Staff note entry
+   * @returns {StaffNote} Cloned staff note
+   */
+  _cloneStaffNote(note) {
+    return {
+      id: note.id,
+      moderator: note.moderator,
+      content: note.content,
+      timestamp: new Date(note.timestamp),
+      metadata: note.metadata && typeof note.metadata === 'object' && !Array.isArray(note.metadata)
+        ? { ...note.metadata }
+        : {}
+    };
   }
 
   /**
@@ -371,8 +581,9 @@ class User {
       isJailed: this.isJailed(),
       hasPersistentRoles: this.hasPersistentRoles(),
       moderationCount: this._moderationHistory.length,
-      lastAction: this._moderationHistory.length > 0 
-        ? this._moderationHistory[this._moderationHistory.length - 1] 
+      staffNoteCount: this._staffNotes.length,
+      lastAction: this._moderationHistory.length > 0
+        ? this._moderationHistory[this._moderationHistory.length - 1]
         : null
     };
   }
@@ -386,6 +597,15 @@ class User {
  * @property {string} reason - Reason for the action
  * @property {Date} timestamp - When action was performed
  * @property {Object} metadata - Additional action metadata
+ */
+
+/**
+ * @typedef {Object} StaffNote
+ * @property {string} id - Unique staff note identifier
+ * @property {string} moderator - ID of moderator who created the note
+ * @property {string} content - Staff note content
+ * @property {Date} timestamp - When the note was created
+ * @property {Object} metadata - Additional staff note metadata
  */
 
 module.exports = User;

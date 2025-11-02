@@ -151,6 +151,293 @@ class ModerationService {
   }
 
   /**
+   * Issue formal warning to a user and persist the action
+   * @param {CommandInteraction} interaction - Discord command interaction
+   * @param {GuildMember|User} target - Member or user to warn
+   * @param {string} reason - Warning reason supplied by staff
+   * @returns {Promise<Object>} Operation result with success status and warning details
+   */
+  async warnUser(interaction, target, reason) {
+    try {
+      const validation = await this._permissionService.validateCommandPermissions(interaction, {
+        moderatorRole: true,
+        checkHierarchy: true
+      });
+
+      if (!validation.allowed) {
+        return {
+          success: false,
+          error: validation.reason,
+          type: 'permission_denied'
+        };
+      }
+
+      const targetUser = target && target.user ? target.user : target;
+      if (!targetUser) {
+        return {
+          success: false,
+          error: 'Target user could not be resolved.',
+          type: 'user_not_found'
+        };
+      }
+
+      if (targetUser.id === interaction.user.id) {
+        return {
+          success: false,
+          error: 'You cannot issue a warning to yourself.',
+          type: 'invalid_target'
+        };
+      }
+
+      const trimmedReason = (reason || '').trim();
+      if (trimmedReason.length === 0) {
+        return {
+          success: false,
+          error: 'Warning reason is required.',
+          type: 'invalid_reason'
+        };
+      }
+
+      if (trimmedReason.length > 500) {
+        return {
+          success: false,
+          error: 'Warning reason cannot exceed 500 characters.',
+          type: 'invalid_reason'
+        };
+      }
+
+      let user = await this._userRepo.findUserById(targetUser.id);
+      if (!user) {
+        const User = require('../entities/User');
+        user = new User(targetUser.id, targetUser.tag || targetUser.username || 'Unknown User');
+      } else if (targetUser.tag && user.tag !== targetUser.tag) {
+        user.tag = targetUser.tag;
+      }
+
+      const warningsBefore = user.getWarnings().length;
+
+      const warningMetadata = {
+        guildId: interaction.guild.id,
+        moderatorTag: interaction.user.tag,
+        warningsBefore
+      };
+
+      const warnAction = user.addWarning(
+        interaction.user.id,
+        trimmedReason,
+        new Date(),
+        warningMetadata
+      );
+
+      await this._userRepo.saveUser(user);
+
+      const warningsAfter = user.getWarnings().length;
+      warnAction.metadata.warningsAfter = warningsAfter;
+
+      const actionId = warnAction.id;
+      this._actionCache.set(actionId, {
+        action: 'warn',
+        target: targetUser.tag || targetUser.username || targetUser.id,
+        moderator: interaction.user.tag,
+        reason: trimmedReason,
+        timestamp: warnAction.timestamp,
+        guildId: interaction.guild.id,
+        warningsAfter
+      });
+
+      return {
+        success: true,
+        action: 'warn',
+        user: {
+          id: targetUser.id,
+          tag: targetUser.tag || targetUser.username || 'Unknown User'
+        },
+        moderator: {
+          id: interaction.user.id,
+          tag: interaction.user.tag
+        },
+        reason: trimmedReason,
+        timestamp: warnAction.timestamp,
+        actionId,
+        warningsAfter
+      };
+    } catch (error) {
+      throw new Error(`Failed to warn user: ${error.message}`);
+    }
+  }
+
+  /**
+   * Add a staff-only note to a user's record
+   * @param {CommandInteraction} interaction - Discord command interaction
+   * @param {GuildMember|User} target - Member or user to annotate
+   * @param {string} content - Staff note content
+   * @returns {Promise<Object>} Operation result with note metadata
+   */
+  async addStaffNote(interaction, target, content) {
+    try {
+      const validation = await this._permissionService.validateCommandPermissions(interaction, {
+        moderatorRole: true
+      });
+
+      if (!validation.allowed) {
+        return {
+          success: false,
+          error: validation.reason,
+          type: 'permission_denied'
+        };
+      }
+
+      const targetUser = target && target.user ? target.user : target;
+      if (!targetUser) {
+        return {
+          success: false,
+          error: 'Target user could not be resolved.',
+          type: 'user_not_found'
+        };
+      }
+
+      const trimmedContent = (content || '').trim();
+      if (trimmedContent.length === 0) {
+        return {
+          success: false,
+          error: 'Note content must be provided.',
+          type: 'invalid_content'
+        };
+      }
+
+      if (trimmedContent.length > 2000) {
+        return {
+          success: false,
+          error: 'Note content cannot exceed 2000 characters.',
+          type: 'invalid_content'
+        };
+      }
+
+      let user = await this._userRepo.findUserById(targetUser.id);
+      if (!user) {
+        const User = require('../entities/User');
+        user = new User(targetUser.id, targetUser.tag || targetUser.username || 'Unknown User');
+      } else if (targetUser.tag && user.tag !== targetUser.tag) {
+        user.tag = targetUser.tag;
+      }
+
+      const noteMetadata = {
+        guildId: interaction.guild.id,
+        moderatorTag: interaction.user.tag
+      };
+
+      const noteEntry = user.addStaffNote(
+        interaction.user.id,
+        trimmedContent,
+        new Date(),
+        noteMetadata
+      );
+
+      await this._userRepo.saveUser(user);
+
+      const notesCount = user.getStaffNotes().length;
+
+      this._actionCache.set(noteEntry.id, {
+        action: 'staff_note',
+        target: targetUser.tag || targetUser.username || targetUser.id,
+        moderator: interaction.user.tag,
+        timestamp: noteEntry.timestamp,
+        guildId: interaction.guild.id,
+        contentPreview: trimmedContent.slice(0, 200)
+      });
+
+      return {
+        success: true,
+        note: {
+          id: noteEntry.id,
+          content: noteEntry.content,
+          timestamp: noteEntry.timestamp,
+          metadata: noteEntry.metadata
+        },
+        user: {
+          id: targetUser.id,
+          tag: targetUser.tag || targetUser.username || 'Unknown User'
+        },
+        moderator: {
+          id: interaction.user.id,
+          tag: interaction.user.tag
+        },
+        notesCount
+      };
+    } catch (error) {
+      throw new Error(`Failed to add staff note: ${error.message}`);
+    }
+  }
+
+  /**
+   * Retrieve staff notes for a user
+   * @param {CommandInteraction} interaction - Discord command interaction
+   * @param {GuildMember|User} target - Member or user whose notes should be retrieved
+   * @param {number} [limit=5] - Maximum number of notes to return
+   * @returns {Promise<Object>} Retrieval result containing notes and metadata
+   */
+  async getStaffNotes(interaction, target, limit = 5) {
+    try {
+      const validation = await this._permissionService.validateCommandPermissions(interaction, {
+        moderatorRole: true
+      });
+
+      if (!validation.allowed) {
+        return {
+          success: false,
+          error: validation.reason,
+          type: 'permission_denied'
+        };
+      }
+
+      const targetUser = target && target.user ? target.user : target;
+      if (!targetUser) {
+        return {
+          success: false,
+          error: 'Target user could not be resolved.',
+          type: 'user_not_found'
+        };
+      }
+
+      const safeLimit = Math.max(1, Math.min(25, Number.isInteger(limit) ? limit : parseInt(limit, 10) || 5));
+
+      const user = await this._userRepo.findUserById(targetUser.id);
+      if (!user) {
+        return {
+          success: true,
+          user: {
+            id: targetUser.id,
+            tag: targetUser.tag || targetUser.username || 'Unknown User'
+          },
+          notes: [],
+          noteCount: 0,
+          limit: safeLimit
+        };
+      }
+
+      if (targetUser.tag && user.tag !== targetUser.tag) {
+        user.tag = targetUser.tag;
+      }
+
+      const allNotes = user.getStaffNotes();
+      const notes = allNotes.slice(0, safeLimit);
+
+      return {
+        success: true,
+        user: {
+          id: targetUser.id,
+          tag: user.tag
+        },
+        notes,
+        noteCount: allNotes.length,
+        limit: safeLimit
+      };
+    } catch (error) {
+      throw new Error(`Failed to retrieve staff notes: ${error.message}`);
+    }
+  }
+
+  /**
    * Ban user from server with optional cleanup and logging
    * @param {CommandInteraction} interaction - Discord command interaction
    * @param {GuildMember|User} target - Member or user to ban

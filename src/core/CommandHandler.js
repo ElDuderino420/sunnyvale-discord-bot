@@ -7,14 +7,21 @@ const TempbanCommand = require('../commands/moderation/TempbanCommand');
 const JailCommand = require('../commands/moderation/JailCommand');
 const UnjailCommand = require('../commands/moderation/UnjailCommand');
 const ClearCommand = require('../commands/moderation/ClearCommand');
+const WarnCommand = require('../commands/moderation/WarnCommand');
+const NoteCommand = require('../commands/moderation/NoteCommand');
 
 const CreateTicketCommand = require('../commands/tickets/CreateTicketCommand');
 const CloseTicketCommand = require('../commands/tickets/CloseTicketCommand');
+const ConfigureTicketCommand = require('../commands/tickets/ConfigureTicketCommand');
+const TicketPanelCommand = require('../commands/tickets/TicketPanelCommand');
 
 const AutorolesCommand = require('../commands/roles/AutorolesCommand');
 
 const ExportTemplateCommand = require('../commands/templates/ExportTemplateCommand');
 const ImportTemplateCommand = require('../commands/templates/ImportTemplateCommand');
+const ExportTemplateFileCommand = require('../commands/templates/ExportTemplateFileCommand');
+const ImportTemplateFileCommand = require('../commands/templates/ImportTemplateFileCommand');
+const BatchTemplateCommand = require('../commands/templates/BatchTemplateCommand');
 
 const SetupCommand = require('../commands/admin/SetupCommand');
 
@@ -67,13 +74,17 @@ class CommandHandler {
         new TempbanCommand(this.services.moderationService),
         new JailCommand(this.services.moderationService, this.services.configRepository),
         new UnjailCommand(this.services.moderationService, this.services.configRepository),
+        new WarnCommand(this.services.moderationService),
+        new NoteCommand(this.services.moderationService),
         new ClearCommand()
       ];
 
       // Ticket commands
       const ticketCommands = [
         new CreateTicketCommand(this.services.ticketService),
-        new CloseTicketCommand(this.services.ticketService, this.services.configRepository)
+        new CloseTicketCommand(this.services.ticketService, this.services.configRepository),
+        new ConfigureTicketCommand(this.services.configRepository, this.services.permissionService),
+        new TicketPanelCommand(this.services.configRepository)
       ];
 
       // Role commands
@@ -84,7 +95,10 @@ class CommandHandler {
       // Template commands
       const templateCommands = [
         new ExportTemplateCommand(this.services.templateService),
-        new ImportTemplateCommand(this.services.templateService)
+        new ImportTemplateCommand(this.services.templateService),
+        new ExportTemplateFileCommand(this.services.templateService),
+        new ImportTemplateFileCommand(this.services.templateService),
+        new BatchTemplateCommand(this.services.templateService)
       ];
 
       // Admin commands
