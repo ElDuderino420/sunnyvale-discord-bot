@@ -756,75 +756,178 @@ class ServerTemplateService {
   }
 
   /**
-   * Validate template data structure and content
-   * @param {Object} templateData - Template data to validate
-   * @returns {Promise<Object>} Validation result with isValid flag and error details
-   * @throws {Error} When validation fails
+   * Export server template as JSON string
+   * @param {Guild} guild - Discord guild to export
+   * @param {string} templateName - Name for the template
+   * @param {string} [description='Exported server template'] - Template description
+   * @param {Object} [options={}] - Export options
+   * @returns {Promise<string>} JSON string of the exported template
+   * @throws {Error} When template export fails
    * @example
-   * const validation = await templateService.validateTemplate(templateData);
-   * if (!validation.isValid) {
-   *   console.log('Template invalid:', validation.error);
-   * }
+   * const jsonString = await serverTemplateService.exportTemplateToJSON(guild, 'My Template');
+   * fs.writeFileSync('template.json', jsonString);
    */
-  async validateTemplate(templateData) {
+  async exportTemplateToJSON(guild, templateName, description = 'Exported server template', options = {}) {
+    const exportResult = await this.exportServerTemplate(guild, templateName, description, options);
+    return JSON.stringify(exportResult.template, null, 2);
+  }
+
+  /**
+   * Import server template from JSON string
+   * @param {CommandInteraction} interaction - Discord command interaction
+   * @param {string} jsonString - JSON string containing template data
+   * @param {string} [strategy='merge'] - Import strategy (merge, overwrite, skip)
+   * @param {Object} [options={}] - Import options
+   * @returns {Promise<Object>} Import result with created/modified items
+   * @throws {Error} When template import fails
+   * @example
+   * const jsonString = fs.readFileSync('template.json', 'utf8');
+   * const result = await serverTemplateService.importTemplateFromJSON(interaction, jsonString);
+   */
+  async importTemplateFromJSON(interaction, jsonString, strategy = 'merge', options = {}) {
     try {
-      // Check if template data exists and has basic structure
-      if (!templateData || typeof templateData !== 'object') {
-        return {
-          isValid: false,
-          error: 'Template data is missing or not a valid object'
-        };
-      }
-
-      // Check required fields
-      const requiredFields = ['name', 'version', 'createdAt'];
-      for (const field of requiredFields) {
-        if (!templateData[field]) {
-          return {
-            isValid: false,
-            error: `Missing required field: ${field}`
-          };
-        }
-      }
-
-      // Validate version format
-      if (typeof templateData.version !== 'string' || !/^\d+\.\d+\.\d+$/.test(templateData.version)) {
-        return {
-          isValid: false,
-          error: 'Invalid version format. Expected semantic version (e.g., 1.0.0)'
-        };
-      }
-
-      // Check if template has any content sections
-      const contentSections = ['channels', 'roles', 'settings'];
-      const hasContent = contentSections.some(section => 
-        templateData[section] && 
-        (Array.isArray(templateData[section]) ? templateData[section].length > 0 : Object.keys(templateData[section]).length > 0)
-      );
-
-      if (!hasContent) {
-        return {
-          isValid: false,
-          error: 'Template appears to be empty (no channels, roles, or settings found)'
-        };
-      }
-
-      return {
-        isValid: true,
-        sections: contentSections.filter(section => templateData[section]),
-        itemCount: {
-          channels: Array.isArray(templateData.channels) ? templateData.channels.length : 0,
-          roles: Array.isArray(templateData.roles) ? templateData.roles.length : 0,
-          settings: templateData.settings ? Object.keys(templateData.settings).length : 0
-        }
-      };
-    } catch (error) {
-      return {
-        isValid: false,
-        error: `Template validation failed: ${error.message}`
-      };
+      const templateData = JSON.parse(jsonString);
+      return await this.importServerTemplate(interaction, templateData, strategy, options);
+    } catch (parseError) {
+      throw new Error(`Invalid JSON format: ${parseError.message}`);
     }
   }
+
+  /**
+   * Export server template to file
+   * @param {Guild} guild - Discord guild to export
+   * @param {string} filePath - Path where to save the template
+   * @param {string} templateName - Name for the template
+   * @param {string} [description='Exported server template'] - Template description
+   * @param {Object} [options={}] - Export options
+   * @returns {Promise<Object>} Export result with file information
+   * @throws {Error} When file export fails
+   * @example
+   * const result = await serverTemplateService.exportTemplateToFile(guild, './templates/my-server.json', 'My Server');
+   */
+  async exportTemplateToFile(guild, filePath, templateName, description = 'Exported server template', options = {}) {
+    const fs = require('fs').promises;
+    const path = require('path');
+    
+    try {
+      // Ensure directory exists
+      const dir = path.dirname(filePath);
+      await fs.mkdir(dir, { recursive: true });
+      
+      // Export template
+      const jsonString = await this.exportTemplateToJSON(guild, templateName, description, options);
+      
+      // Write to file
+      await fs.writeFile(filePath, jsonString, 'utf8');
+      
+      const stats = await fs.stat(filePath);
+      
+      return {
+        success: true,
+        filePath: filePath,
+        fileName: path.basename(filePath),
+        fileSize: stats.size,
+        exportedAt: new Date()
+      };
+    } catch (error) {
+      throw new Error(`Failed to export template to file: ${error.message}`);
+    }
+  }
+
+  /**
+   * Import server template from file
+   * @param {CommandInteraction} interaction - Discord command interaction
+   * @param {string} filePath - Path to the template file
+   * @param {string} [strategy='merge'] - Import strategy (merge, overwrite, skip)
+   * @param {Object} [options={}] - Import options
+   * @returns {Promise<Object>} Import result with created/modified items
+   * @throws {Error} When file import fails
+   * @example
+   * const result = await serverTemplateService.importTemplateFromFile(interaction, './templates/my-server.json');
+   */
+  async importTemplateFromFile(interaction, filePath, strategy = 'merge', options = {}) {
+    const fs = require('fs').promises;
+    
+    try {
+      // Check if file exists
+      await fs.access(filePath);
+      
+      // Read file
+      const jsonString = await fs.readFile(filePath, 'utf8');
+      
+      // Import template
+      return await this.importTemplateFromJSON(interaction, jsonString, strategy, options);
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        throw new Error(`Template file not found: ${filePath}`);
+      }
+      throw new Error(`Failed to import template from file: ${error.message}`);
+    }
+  }
+
+  /**
+   * Batch export multiple templates to a directory
+   * @param {Array<Object>} exportConfigs - Array of export configurations
+   * @param {string} outputDir - Directory to save templates
+   * @returns {Promise<Object>} Batch export results
+   * @throws {Error} When batch export fails
+   * @example
+   * const configs = [
+   *   { guild: guild1, templateName: 'Gaming Server', fileName: 'gaming-template.json' },
+   *   { guild: guild2, templateName: 'Study Group', fileName: 'study-template.json' }
+   * ];
+   * const results = await serverTemplateService.batchExportTemplates(configs, './templates/');
+   */
+  async batchExportTemplates(exportConfigs, outputDir) {
+    const fs = require('fs').promises;
+    const path = require('path');
+    
+    const results = {
+      success: [],
+      failed: [],
+      summary: {
+        total: exportConfigs.length,
+        successful: 0,
+        failed: 0
+      }
+    };
+    
+    // Ensure output directory exists
+    await fs.mkdir(outputDir, { recursive: true });
+    
+    for (const config of exportConfigs) {
+      try {
+        const {
+          guild,
+          templateName,
+          fileName,
+          description = 'Batch exported server template',
+          options = {}
+        } = config;
+        
+        const filePath = path.join(outputDir, fileName);
+        const result = await this.exportTemplateToFile(guild, filePath, templateName, description, options);
+        
+        results.success.push({
+          templateName,
+          fileName,
+          filePath,
+          fileSize: result.fileSize
+        });
+        results.summary.successful++;
+      } catch (error) {
+        results.failed.push({
+          templateName: config.templateName || 'Unknown',
+          fileName: config.fileName || 'Unknown',
+          error: error.message
+        });
+        results.summary.failed++;
+      }
+    }
+    
+    return results;
+  }
+
 
   /**
    * Validate import permissions and configuration
@@ -852,7 +955,7 @@ class ServerTemplateService {
       }
 
       // Validate template first
-      const templateValidation = await this.validateTemplate(templateData);
+      const templateValidation = this.validateTemplate(templateData);
       if (!templateValidation.isValid) {
         return {
           isValid: false,
