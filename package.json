@@ -10,7 +10,8 @@
     "docs": "jsdoc -c jsdoc.config.json",
     "docs:serve": "http-server docs/",
     "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix"
+    "lint:fix": "eslint src/ --fix",
+    "deploy": "rsync -avz --exclude node_modules --exclude .git --exclude .env --delete -e ssh ./ zer0@homestead:/opt/services/sunnyvalebot"
   },
   "keywords": [
     "discord",
