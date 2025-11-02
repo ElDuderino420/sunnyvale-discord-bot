@@ -56,6 +56,13 @@ class Server {
       jailedRoleId: config.jailedRoleId || null,
       autoroles: config.autoroles || {},
       templates: config.templates || {},
+      ticketConfig: config.ticketConfig || {
+        staffRoleId: null,
+        logChannelId: null,
+        autoClose: false,
+        maxTicketsPerUser: 3,
+        autoCloseHours: 168 // 7 days
+      },
       createdAt: config.createdAt || new Date(),
       updatedAt: config.updatedAt || new Date()
     };
