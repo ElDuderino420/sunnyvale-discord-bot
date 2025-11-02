@@ -102,6 +102,13 @@ lib-cov/
 *.sublime-workspace
 *.sublime-project
 
+# AI assistant and development tools
+.claude/
+.kiro/
+.roo/
+.cursor/
+.windsurf/
+
 # OS generated files
 .DS_Store
 .DS_Store?
